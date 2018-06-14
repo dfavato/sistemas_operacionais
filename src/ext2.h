@@ -1,11 +1,12 @@
 #define BASE_OFFSET 1024
 #define BLOCK_OFFSET(block) (BASE_OFFSET + (block-1)*1024)
-
+#define EXT2_ROOT_INO 2
 #define	EXT2_NDIR_BLOCKS		12
 #define	EXT2_IND_BLOCK			EXT2_NDIR_BLOCKS
 #define	EXT2_DIND_BLOCK			(EXT2_IND_BLOCK + 1)
 #define	EXT2_TIND_BLOCK			(EXT2_DIND_BLOCK + 1)
 #define	EXT2_N_BLOCKS			(EXT2_TIND_BLOCK + 1)
+#define EXT2_NAME_LEN 255
 
 typedef int __le32;
 typedef short __le16;
@@ -156,4 +157,12 @@ struct ext2_dir_entry {
 	__le16	rec_len;		/* Directory entry length */
 	__le16	name_len;		/* Name length */
 	char	name[];			/* File name, up to EXT2_NAME_LEN */
+};
+
+struct ext2_dir_entry_2 {
+	__le32 inode;
+	__le16 rec_len;
+	__u8 name_len;
+	__u8 file_type;
+	char name[];
 };
