@@ -1,5 +1,5 @@
 dcc_fs_shell: ext2.c ext2.h
-	cc -o dcc_fs_shell ext2.c
+	cc -g -o dcc_fs_shell ext2.c
 
 clean:
 	rm dcc_fs_shell
