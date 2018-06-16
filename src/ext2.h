@@ -1,5 +1,4 @@
 #define BASE_OFFSET 1024
-#define BLOCK_OFFSET(block) (BASE_OFFSET + (block-1)*1024)
 #define EXT2_ROOT_INO 2
 #define	EXT2_NDIR_BLOCKS		12
 #define	EXT2_IND_BLOCK			EXT2_NDIR_BLOCKS
