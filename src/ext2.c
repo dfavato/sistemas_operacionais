@@ -30,7 +30,7 @@ struct ext2_inode *curdir;
 
 // Funçoes principais
 void sb(); // printa as informações do super bloco
-void ls(struct ext2_inode); // printa as entradas do diretorio passado
+void ls(char*); // printa as entradas do diretorio passado
 void cd(char*); // muda o curdir para o inode de nome *name
 void status(char*); // printa o stat do diretório como nome *name
 void find(); // printa a árvore de caminhos
@@ -40,12 +40,20 @@ struct ext2_super_block *get_super_block();
 struct ext2_group_desc* get_group_desc(int group);
 struct ext2_inode* get_root_directory();
 struct ext2_inode* read_inode(__le32 inode_nr);
-struct ext2_inode* get_inode_by_name(char *name, __le32*);
+struct ext2_inode* get_inode_by_name(char *name, __le32*); // o inode_nr é gravado no __le32*
+
+// funções do shell
+struct cmd {
+	char *command;
+	char *operand;
+};
+int getcmd(char *buf, int nbuf);
+struct cmd* parsecmd(char*);
+void runcmd(struct cmd*);
 
 int main(int argc, char *argv[]) {
 	char imgpath[255];
-	struct ext2_inode *dir;
-	__le32 inode_nr;
+	static char buf[255];
 
 	if(argc <= 1) {
 		fprintf(stderr, "Informe um arquivo de imagem.\n");
@@ -65,16 +73,26 @@ int main(int argc, char *argv[]) {
 	}
 
 	sb();
-	curdir = get_root_directory(curdir);
-	ls(*curdir);
+	curdir = get_root_directory();
+	ls(".");
 	status(".");
-	dir = get_inode_by_name("documents", &inode_nr);
-	ls(*dir);
+	ls("documents");
+	cd("files");
+	ls(".");
+
+	while(getcmd(buf, sizeof(buf)) >= 0) {
+		buf[strlen(buf)-1] = '\0';
+		if(buf[0] == 'q' && buf[1] == '\0') {
+			printf("Exit\n");
+			break;
+		}
+		printf("Command: %s\n", buf);
+		runcmd(parsecmd(buf));
+	}
 
 	// Free resources
 	free(super);
 	free(curdir);
-	free(dir);
 	close(storage_device);
 	return EXIT_SUCCESS;
 }
@@ -152,13 +170,12 @@ void status(char *name) {
 	__le32 inode_nr;
 	
 	inode = get_inode_by_name(name, &inode_nr);
-	printf("status - inode addr: %p\n", inode);
 
 	printf("File: %s\n", name);
 
 	printf("Size: %d\t\t", inode->i_size);
 	printf("Blocks: %d\t\t", inode->i_blocks);
-	printf("IO Block: %d\t\t", BLOCK_SIZE);
+	printf("IO Block: %d\t\t\t", BLOCK_SIZE);
 	if(S_ISDIR(inode->i_mode)) {
 		printf("directory\n");
 	} else if (S_ISREG(inode->i_mode)) {
@@ -209,7 +226,6 @@ struct ext2_inode* read_inode(__le32 inode_nr) {
 	lseek(storage_device, offset, SEEK_SET);
 	read(storage_device, inode, sizeof(*inode));
 	free(gd);
-	printf("read inode - inode addr: %p\n", inode);
 	return inode;
 }
 
@@ -231,7 +247,6 @@ struct ext2_inode* get_inode_by_name(char *name, __le32* inode_nr) {
 			*inode_nr = entry->inode;
 			free(block);
 			inode = read_inode(*inode_nr);
-			printf("get_inode_by_name - inode addr: %p\n", inode);
 			return inode;
 		}
 		bytes_read += entry->rec_len;
@@ -241,9 +256,11 @@ struct ext2_inode* get_inode_by_name(char *name, __le32* inode_nr) {
 	return NULL;
 }
 
-void ls(struct ext2_inode inode) {
-	if(!S_ISDIR(inode.i_mode)) {
-		fprintf(stderr, "Diretório inválido, i_mode: %d\n", inode.i_mode);
+void ls(char* name) {
+	__le32 inode_nr;
+	struct ext2_inode *inode = get_inode_by_name(name, &inode_nr);
+	if(!S_ISDIR(inode->i_mode)) {
+		fprintf(stderr, "Diretório inválido, i_mode: %d\n", inode->i_mode);
 		return;
 	}
 	struct ext2_dir_entry_2 *entry;
@@ -251,10 +268,10 @@ void ls(struct ext2_inode inode) {
 	void *block = malloc(BLOCK_SIZE);
 	char file_name[EXT2_NAME_LEN+1];
 
-	lseek(storage_device, BLOCK_OFFSET(inode.i_block[0]), SEEK_SET);
+	lseek(storage_device, BLOCK_OFFSET(inode->i_block[0]), SEEK_SET);
 	read(storage_device, block, BLOCK_SIZE);
 	entry = (struct ext2_dir_entry_2 *)block;
-	while(bytes_read < inode.i_size && entry->inode) {
+	while(bytes_read < inode->i_size && entry->inode) {
 		memcpy(file_name, entry->name, entry->name_len);
 		file_name[entry->name_len] = '\0';
 		printf("%s\t", file_name);
@@ -262,5 +279,32 @@ void ls(struct ext2_inode inode) {
 		entry = (void*) entry +  entry->rec_len;
 	}
 	printf("\n");
+	free(inode);
 	free(block);
+}
+
+int getcmd(char *buf, int nbuf) {
+	// implementação igual ao do TP1
+	if(isatty(fileno(stdin)))
+		printf("$ ");
+	memset(buf, 0, nbuf);
+	fgets(buf, nbuf, stdin);
+	if(buf[0] == 0) // EOF
+		return -1;
+	return 0;
+}
+
+struct cmd* parsecmd(char* line) {
+	int counter = 0;
+	struct cmd* cmd = (struct cmd*)malloc(sizeof(struct cmd));
+
+	cmd->command = strsep(&line, " ");
+	cmd->operand = strsep(&line, " ");
+	return cmd;
+}
+
+void runcmd(struct cmd* cmd) {
+	printf("Command: %s\n", cmd->command);
+	printf("Operand: %s\n", cmd->operand);
+	free(cmd);
 }
