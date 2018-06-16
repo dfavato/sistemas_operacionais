@@ -71,14 +71,7 @@ int main(int argc, char *argv[]) {
 		fprintf(stderr, "Magic do superblock: 0x%hx\n", super->s_magic);
 		return EXIT_FAILURE;
 	}
-
-	sb();
 	curdir = get_root_directory();
-	ls(".");
-	status(".");
-	ls("documents");
-	cd("files");
-	ls(".");
 
 	while(getcmd(buf, sizeof(buf)) >= 0) {
 		buf[strlen(buf)-1] = '\0';
@@ -86,7 +79,6 @@ int main(int argc, char *argv[]) {
 			printf("Exit\n");
 			break;
 		}
-		printf("Command: %s\n", buf);
 		runcmd(parsecmd(buf));
 	}
 
@@ -107,18 +99,18 @@ struct ext2_super_block* get_super_block() {
 
 void sb() {
 	// Print superblock information
-	printf("Inodes count: %d\n", super->s_inodes_count);
-	printf("Blocks count: %d\n", super->s_blocks_count);
-	printf("Reserved blocks: %d\n", super->s_r_blocks_count);
-	printf("Free blocks: %d\n", super->s_free_blocks_count);
-	printf("Free inodes: %d\n", super->s_free_inodes_count);
-	printf("First data block: %d\n", super->s_first_data_block);
-	printf("Block size: %d\n", super->s_log_block_size);
-	printf("Blocks per group: %d\n", super->s_blocks_per_group);
-	printf("Inodes per group: %d\n", super->s_inodes_per_group);
-	printf("Magic signature: 0x%hx\n", super->s_magic);
+	printf("Inodes count:             %d\n", super->s_inodes_count);
+	printf("Blocks count:             %d\n", super->s_blocks_count);
+	printf("Reserved blocks:          %d\n", super->s_r_blocks_count);
+	printf("Free blocks:              %d\n", super->s_free_blocks_count);
+	printf("Free inodes:              %d\n", super->s_free_inodes_count);
+	printf("First data block:         %d\n", super->s_first_data_block);
+	printf("Block size (log2 - 10)    %d\n", super->s_log_block_size);
+	printf("Blocks per group:         %d\n", super->s_blocks_per_group);
+	printf("Inodes per group:         %d\n", super->s_inodes_per_group);
+	printf("Magic signature:          0x%hx\n", super->s_magic);
 	printf("First non-reserved inode: %d\n", super->s_first_ino);
-	printf("Inode size: %d\n", super->s_inode_size);
+	printf("Inode size:               %d\n", super->s_inode_size);
 }
 
 struct ext2_group_desc* get_group_desc(int group) {
@@ -152,7 +144,15 @@ struct ext2_inode* get_root_directory() {
 void cd(char *name) {
 	struct ext2_inode *dir;
 	__le32 inode_nr;
-	dir = get_inode_by_name(name, &inode_nr);
+	if(name == NULL) {
+		dir = get_root_directory();
+	} else {
+		dir = get_inode_by_name(name, &inode_nr);
+	}
+	if(!dir) {
+		fprintf(stderr, "%s não é um caminho válido.\n", name);
+		return;
+	}
 	if(!S_ISDIR(dir->i_mode)) {
 		fprintf(stderr, "%s não é um diretório.\n", name);
 		free(dir);
@@ -168,14 +168,22 @@ void status(char *name) {
 	time_t date;
 	char *format = "%Y-%m-%d %H:%M:%S %Z00";
 	__le32 inode_nr;
+	if(name == NULL) {
+		fprintf(stderr, "É necessário informar um caminho.\n");
+		return;
+	}
 	
 	inode = get_inode_by_name(name, &inode_nr);
+	if(!inode) {
+		fprintf(stderr, "%s não é um caminho válido.\n", name);
+		return;
+	}
 
-	printf("File: %s\n", name);
+	printf("  File: %s\n", name);
 
-	printf("Size: %d\t\t", inode->i_size);
+	printf("  Size: %d\t\t", inode->i_size);
 	printf("Blocks: %d\t\t", inode->i_blocks);
-	printf("IO Block: %d\t\t\t", BLOCK_SIZE);
+	printf("IO Block: %d\t", BLOCK_SIZE);
 	if(S_ISDIR(inode->i_mode)) {
 		printf("directory\n");
 	} else if (S_ISREG(inode->i_mode)) {
@@ -213,7 +221,7 @@ void status(char *name) {
 	strftime(time_string, sizeof(time_string), format, localtime(&date));
 	printf("Change: %s\n", time_string);
 	
-	printf("Birth: -\n");
+	printf(" Birth: -\n");
 	free(inode);
 }
 
@@ -258,9 +266,15 @@ struct ext2_inode* get_inode_by_name(char *name, __le32* inode_nr) {
 
 void ls(char* name) {
 	__le32 inode_nr;
+	if(name == NULL) name = ".";
 	struct ext2_inode *inode = get_inode_by_name(name, &inode_nr);
+	if(!inode) {
+		fprintf(stderr, "%s não é um caminho válido.\n", name);
+		return;
+	}
 	if(!S_ISDIR(inode->i_mode)) {
-		fprintf(stderr, "Diretório inválido, i_mode: %d\n", inode->i_mode);
+		printf("%s\n", name);
+		free(inode);
 		return;
 	}
 	struct ext2_dir_entry_2 *entry;
@@ -281,6 +295,9 @@ void ls(char* name) {
 	printf("\n");
 	free(inode);
 	free(block);
+}
+
+void find() {
 }
 
 int getcmd(char *buf, int nbuf) {
@@ -304,7 +321,18 @@ struct cmd* parsecmd(char* line) {
 }
 
 void runcmd(struct cmd* cmd) {
-	printf("Command: %s\n", cmd->command);
-	printf("Operand: %s\n", cmd->operand);
+	if(!strcmp(cmd->command, "cd")) {
+		cd(cmd->operand);
+	} else if (!strcmp(cmd->command, "ls")) {
+		ls(cmd->operand);
+	} else if (!strcmp(cmd->command, "stat")) {
+		status(cmd->operand);
+	} else if (!strcmp(cmd->command, "sb")) {
+		sb();
+	} else if (!strcmp(cmd->command, "find")) {
+		find();
+	} else {
+		printf("%s: commando inválido.\n", cmd->command);
+	}
 	free(cmd);
 }
